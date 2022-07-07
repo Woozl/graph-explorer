@@ -36,6 +36,7 @@ const scalePoint = (a: Point, scalar: number): Point => ({
 });
 
 const ZOOM_SENSITIVITY = 500;
+const PINCH_SENSITIVITY = 200;
 
 const Canvas = (props: CanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -185,7 +186,12 @@ const Canvas = (props: CanvasProps) => {
     const handleWheel = (e: globalThis.WheelEvent) => {
       e.preventDefault();
       if (context !== null) {
-        const zoom = 1 - e.deltaY / ZOOM_SENSITIVITY;
+        let zoom: number;
+        if (e.ctrlKey) {
+          zoom = 1 - e.deltaY / PINCH_SENSITIVITY;
+        } else {
+          zoom = 1 - e.deltaY / ZOOM_SENSITIVITY;
+        }
         const viewportTopLeftDelta: Point = {
           x: (mousePos.x / scale) * (1 - 1 / zoom),
           y: (mousePos.y / scale) * (1 - 1 / zoom)
