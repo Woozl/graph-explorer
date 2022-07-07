@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState
 } from 'react';
+import { validateLocaleAndSetLanguage } from 'typescript';
 import styles from './Canvas.module.css';
 
 type Point = { x: number; y: number };
@@ -211,10 +212,26 @@ const Canvas = (props: CanvasProps) => {
 
   return (
     <>
-      <pre>scale: {scale}</pre>
-      <pre>offset: {JSON.stringify(offset)}</pre>
-      <pre>mousePos: {JSON.stringify(mousePos)}</pre>
-      <pre>viewportTopLeft: {JSON.stringify(viewportTopLeft)}</pre>
+      <button onClick={() => context && reset(context)}>reset</button>
+      <pre>scale: {scale.toFixed(2)}</pre>
+      <pre>
+        offset:{' '}
+        {JSON.stringify(offset, (_, v) =>
+          v.toFixed ? Number(v.toFixed(3)) : v
+        )}
+      </pre>
+      <pre>
+        mousePos:{' '}
+        {JSON.stringify(mousePos, (_, v) =>
+          v.toFixed ? Number(v.toFixed(3)) : v
+        )}
+      </pre>
+      <pre>
+        viewportTopLeft:{' '}
+        {JSON.stringify(viewportTopLeft, (_, v) =>
+          v.toFixed ? Number(v.toFixed(3)) : v
+        )}
+      </pre>
       <canvas
         ref={canvasRef}
         onMouseDown={startPan}
