@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.css": "/static/css/main.5d9b1bed.css",
-    "main.js": "/static/js/main.2d055cb4.js",
-    "index.html": "/index.html",
-    "main.5d9b1bed.css.map": "/static/css/main.5d9b1bed.css.map",
-    "main.2d055cb4.js.map": "/static/js/main.2d055cb4.js.map"
+    "main.css": "/graph-explorer/static/css/main.5d9b1bed.css",
+    "main.js": "/graph-explorer/static/js/main.2d055cb4.js",
+    "index.html": "/graph-explorer/index.html",
+    "main.5d9b1bed.css.map": "/graph-explorer/static/css/main.5d9b1bed.css.map",
+    "main.2d055cb4.js.map": "/graph-explorer/static/js/main.2d055cb4.js.map"
   },
   "entrypoints": [
     "static/css/main.5d9b1bed.css",
