@@ -43,6 +43,7 @@ const scalePoint = (a: Point, scalar: number): Point => ({
 
 const ZOOM_SENSITIVITY = 500;
 const PINCH_SENSITIVITY = 200;
+const TOUCH_SENSITIVITY = 500;
 
 const Canvas = (props: CanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -149,15 +150,52 @@ const Canvas = (props: CanvasProps) => {
   const touchMove = useCallback(
     (e: globalThis.TouchEvent) => {
       if (context !== null) {
-        const lastMousePos = lastMousePosRef.current;
-        const currentMousePos: Point = {
-          x: e.touches[0].pageX,
-          y: e.touches[0].pageY
-        };
-        lastMousePosRef.current = currentMousePos;
+        if (e.touches.length === 1) {
+          const lastMousePos = lastMousePosRef.current;
+          const currentMousePos: Point = {
+            x: e.touches[0].pageX,
+            y: e.touches[0].pageY
+          };
+          lastMousePosRef.current = currentMousePos;
 
-        const touchDiff = diffPoints(currentMousePos, lastMousePos);
-        setOffset((prevOffset) => addPoints(prevOffset, touchDiff));
+          const touchDiff = diffPoints(currentMousePos, lastMousePos);
+          setOffset((prevOffset) => addPoints(prevOffset, touchDiff));
+        }
+        if (e.touches.length === 2) {
+          console.log('test');
+          e.preventDefault();
+          const touch1: Point = {
+            x: e.touches[0].pageX,
+            y: e.touches[0].pageY
+          };
+          const touch2: Point = {
+            x: e.touches[1].pageX,
+            y: e.touches[1].pageY
+          };
+
+          const middle = averagePoints(touch1, touch2);
+          const distance = distanceBetweenPoints(touch1, touch2);
+
+          const zoom = 1 - distance / TOUCH_SENSITIVITY;
+
+          const viewportTopLeftDelta: Point = {
+            x: (middle.x / scale) * (1 - 1 / zoom),
+            y: (middle.y / scale) * (1 - 1 / zoom)
+          };
+
+          const newViewportTopLeft = addPoints(
+            viewportTopLeft,
+            viewportTopLeftDelta
+          );
+
+          context.translate(viewportTopLeft.x, viewportTopLeft.y);
+          context.scale(zoom, zoom);
+          context.translate(-newViewportTopLeft.x, -newViewportTopLeft.y);
+
+          setViewportTopLeft(newViewportTopLeft);
+          setScale(scale * zoom);
+          isResetRef.current = false;
+        }
       }
     },
     [context]
