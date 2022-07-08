@@ -97,7 +97,7 @@ const Canvas = (props: CanvasProps) => {
       const squareSize = 50;
 
       const storedTransform = context.getTransform();
-      context.canvas.width = context.canvas.width;
+      context.canvas.width = context.canvas.width; // eslint-disable-line
       context.setTransform(storedTransform);
 
       context.fillRect(
