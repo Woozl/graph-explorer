@@ -1,297 +1,139 @@
 import React, {
-  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
-  useState
+  useState,
+  WheelEvent
 } from 'react';
 import styles from './Canvas.module.css';
 
-type Point = { x: number; y: number };
+const TOUCHPAD_ZOOM_SENS = 200;
+const TOUCHPAD_PAN_SENS = 1;
+const ORIGIN: Point = { x: 0, y: 0 };
 
-interface CanvasProps {
-  canvasWidth: number;
-  canvasHeight: number;
+type Point = { x: number; y: number };
+interface Camera {
+  x: number;
+  y: number;
+  z: number;
 }
 
-const ORIGIN = Object.freeze({ x: 0, y: 0 });
+interface Box {
+  topLeft: Point;
+  bottomRight: Point;
+  width: number;
+  height: number;
+}
 
-const { devicePixelRatio: ratio = 1 } = window;
-
-const diffPoints = (a: Point, b: Point): Point => ({
-  x: a.x - b.x,
-  y: a.y - b.y
+const screenToCanvas = (point: Point, camera: Camera): Point => ({
+  x: point.x / camera.z - camera.x,
+  y: point.y / camera.z - camera.y
 });
 
-const distanceBetweenPoints = (a: Point, b: Point): number =>
-  Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
-
-const addPoints = (a: Point, b: Point): Point => ({
-  x: a.x + b.x,
-  y: a.y + b.y
+const canvasToScreen = (point: Point, camera: Camera): Point => ({
+  x: (point.x + camera.x) * camera.z,
+  y: (point.y + camera.y) * camera.z
 });
 
-const averagePoints = (...points: Point[]): Point => ({
-  x: points.reduce((acc, v) => acc + v.x, 0) / points.length,
-  y: points.reduce((acc, v) => acc + v.y, 0) / points.length
+const getViewport = (camera: Camera, box: Box): Box => {
+  const topLeftCanvas = screenToCanvas(box.topLeft, camera);
+  const bottomRightCanvas = screenToCanvas(box.bottomRight, camera);
+
+  return {
+    topLeft: topLeftCanvas,
+    bottomRight: bottomRightCanvas,
+    width: bottomRightCanvas.x - topLeftCanvas.x,
+    height: bottomRightCanvas.y - topLeftCanvas.y
+  };
+};
+
+const panCamera = (camera: Camera, dx: number, dy: number): Camera => ({
+  x: camera.x - dx / camera.z,
+  y: camera.y - dy / camera.z,
+  z: camera.z
 });
 
-const scalePoint = (a: Point, scalar: number): Point => ({
-  x: a.x / scalar,
-  y: a.y / scalar
-});
+const zoomCamera = (camera: Camera, point: Point, dz: number): Camera => {
+  const zoom = camera.z - dz * camera.z;
+  const p1 = screenToCanvas(point, camera);
+  const p2 = screenToCanvas(point, { ...camera, z: zoom });
 
-const ZOOM_SENSITIVITY = 500;
-const PINCH_SENSITIVITY = 200;
+  return {
+    x: camera.x + (p2.x - p1.x),
+    y: camera.y + (p2.y - p1.y),
+    z: zoom
+  };
+};
 
-const Canvas = (props: CanvasProps) => {
+const Canvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [context, setContext] = useState<CanvasRenderingContext2D | null>(null);
-  const isResetRef = useRef(false);
-
-  const [scale, setScale] = useState(1);
-
-  const [offset, setOffset] = useState<Point>(ORIGIN);
-  const lastOffsetRef = useRef<Point>(ORIGIN);
-  const [viewportTopLeft, setViewportTopLeft] = useState<Point>(ORIGIN);
-
-  const [mousePos, setMousePos] = useState<Point>(ORIGIN);
-  const lastMousePosRef = useRef<Point>(ORIGIN);
-
-  useEffect(() => {
-    lastOffsetRef.current = offset;
-  }, [offset]);
-
-  const reset = useCallback(
-    (context: CanvasRenderingContext2D) => {
-      if (context && !isResetRef.current) {
-        context.canvas.width = props.canvasWidth * ratio;
-        context.canvas.height = props.canvasHeight * ratio;
-        context.scale(ratio, ratio);
-        setScale(1);
-
-        setContext(context);
-        setOffset(ORIGIN);
-        setMousePos(ORIGIN);
-        setViewportTopLeft(ORIGIN);
-        lastOffsetRef.current = ORIGIN;
-        lastMousePosRef.current = ORIGIN;
-
-        isResetRef.current = true;
-      }
-    },
-    [props.canvasWidth, props.canvasHeight]
-  );
-
-  // run once after the component mounts
-  useLayoutEffect(() => {
-    if (canvasRef.current !== null) {
-      const ctx = canvasRef.current.getContext('2d');
-
-      if (ctx) reset(ctx);
-    }
-  }, [reset, props.canvasWidth, props.canvasHeight]);
+  const [camera, setCamera] = useState<Camera>({ ...ORIGIN, z: 1 });
 
   useLayoutEffect(() => {
-    if (context) {
-      const squareSize = 50;
-
-      const storedTransform = context.getTransform();
-      context.canvas.width = context.canvas.width; // eslint-disable-line
-      context.setTransform(storedTransform);
-
-      context.fillRect(
-        props.canvasWidth / 2 - squareSize / 2,
-        props.canvasHeight / 2 - squareSize / 2,
-        squareSize,
-        squareSize
-      );
-
-      context.fillRect(props.canvasHeight - 10, props.canvasWidth - 10, 10, 10);
-    }
-  }, [
-    props.canvasWidth,
-    props.canvasHeight,
-    context,
-    scale,
-    offset,
-    viewportTopLeft
-  ]);
-
-  const mouseMove = useCallback(
-    (e: globalThis.MouseEvent) => {
-      if (context !== null) {
-        const lastMousePos = lastMousePosRef.current;
-        const currentMousePos: Point = { x: e.pageX, y: e.pageY };
-        lastMousePosRef.current = currentMousePos;
-
-        const mouseDiff = diffPoints(currentMousePos, lastMousePos);
-        setOffset((prevOffset) => addPoints(prevOffset, mouseDiff));
-      }
-    },
-    [context]
-  );
-
-  const mouseUp = useCallback(() => {
-    document.removeEventListener('mousemove', mouseMove);
-    document.removeEventListener('mouseup', mouseUp);
-  }, [mouseMove]);
-
-  const startPan = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      document.addEventListener('mousemove', mouseMove);
-      document.addEventListener('mouseup', mouseUp);
-      lastMousePosRef.current = { x: e.pageX, y: e.pageY };
-    },
-    [mouseMove, mouseUp]
-  );
-
-  const touchMove = useCallback(
-    (e: globalThis.TouchEvent) => {
-      if (context !== null) {
-        const lastMousePos = lastMousePosRef.current;
-        const currentMousePos: Point = {
-          x: e.touches[0].pageX,
-          y: e.touches[0].pageY
-        };
-        lastMousePosRef.current = currentMousePos;
-
-        const touchDiff = diffPoints(currentMousePos, lastMousePos);
-        setOffset((prevOffset) => addPoints(prevOffset, touchDiff));
-      }
-    },
-    [context]
-  );
-
-  const touchEnd = useCallback(() => {
-    document.removeEventListener('touchmove', touchMove);
-    document.removeEventListener('touchend', touchEnd);
-  }, [touchMove]);
-
-  const handleTouch = useCallback(
-    (e: React.TouchEvent<HTMLCanvasElement>) => {
-      document.addEventListener('touchmove', touchMove);
-      document.addEventListener('touchend', touchEnd);
-      if (e.touches.length === 1) {
-        lastMousePosRef.current = {
-          x: e.touches[0].pageX,
-          y: e.touches[0].pageY
-        };
-      }
-    },
-    [touchMove, touchEnd]
-  );
-
-  useLayoutEffect(() => {
-    if (context && lastOffsetRef.current) {
-      const offsetDiff = scalePoint(
-        diffPoints(offset, lastOffsetRef.current),
-        scale
-      );
-      context.translate(offsetDiff.x, offsetDiff.y);
-      setViewportTopLeft((prevVal) => diffPoints(prevVal, offsetDiff));
-      isResetRef.current = false;
-    }
-  }, [context, offset, scale]);
-
-  // add event listener on canvas for position relative to top left
-  // of canvas element
-  useEffect(() => {
-    const canvasElement = canvasRef.current;
-    if (canvasElement === null) return;
-
-    const handleUpdateMouse = (e: globalThis.MouseEvent) => {
+    const handleWheel = (e: globalThis.WheelEvent) => {
       e.preventDefault();
-      if (canvasRef.current !== null) {
-        const viewportMousePos: Point = { x: e.clientX, y: e.clientY };
-        const topLeftCanvasPos: Point = {
-          x: canvasRef.current.offsetLeft,
-          y: canvasRef.current.offsetTop
-        };
-        setMousePos(diffPoints(viewportMousePos, topLeftCanvasPos));
+
+      const { clientX: x, clientY: y, deltaX, deltaY, ctrlKey } = e;
+
+      if (ctrlKey) {
+        setCamera((camera) =>
+          zoomCamera(camera, { x, y }, deltaY / TOUCHPAD_ZOOM_SENS)
+        );
+      } else {
+        setCamera((camera) =>
+          panCamera(
+            camera,
+            deltaX * TOUCHPAD_PAN_SENS,
+            deltaY * TOUCHPAD_PAN_SENS
+          )
+        );
       }
     };
 
-    canvasElement.addEventListener('mousemove', handleUpdateMouse);
-    canvasElement.addEventListener('wheel', handleUpdateMouse);
+    let canvasEl: HTMLCanvasElement | null = null;
+    if (canvasRef.current) {
+      canvasEl = canvasRef.current;
 
-    return () => {
-      canvasElement.removeEventListener('mousemove', handleUpdateMouse);
-      canvasElement.removeEventListener('wheel', handleUpdateMouse);
-    };
+      canvasEl.addEventListener('wheel', handleWheel, { passive: false });
+    }
+
+    return () => canvasEl?.removeEventListener('wheel', handleWheel);
+  }, [canvasRef]);
+
+  const viewport = getViewport(camera, {
+    topLeft: ORIGIN,
+    bottomRight: { x: window.innerWidth, y: window.innerHeight },
+    width: window.innerWidth,
+    height: window.innerHeight
   });
 
   useEffect(() => {
-    const canvasElement = canvasRef.current;
-    if (canvasElement === null) return;
+    if (canvasRef.current !== null) {
+      const canvas = canvasRef.current;
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+  }, []);
 
-    const handleWheel = (e: globalThis.WheelEvent) => {
-      e.preventDefault();
+  useEffect(() => {
+    if (canvasRef.current !== null) {
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+
       if (context !== null) {
-        let zoom: number;
-        if (e.ctrlKey) {
-          zoom = 1 - e.deltaY / PINCH_SENSITIVITY;
-        } else {
-          zoom = 1 - e.deltaY / ZOOM_SENSITIVITY;
-        }
-        const viewportTopLeftDelta: Point = {
-          x: (mousePos.x / scale) * (1 - 1 / zoom),
-          y: (mousePos.y / scale) * (1 - 1 / zoom)
-        };
+        context.resetTransform();
+        context.clearRect(0, 0, window.innerWidth, window.innerHeight);
+        context.scale(camera.z, camera.z);
+        context.translate(camera.x, camera.y);
 
-        const newViewportTopLeft = addPoints(
-          viewportTopLeft,
-          viewportTopLeftDelta
-        );
-
-        context.translate(viewportTopLeft.x, viewportTopLeft.y);
-        context.scale(zoom, zoom);
-        context.translate(-newViewportTopLeft.x, -newViewportTopLeft.y);
-
-        setViewportTopLeft(newViewportTopLeft);
-        setScale(scale * zoom);
-        isResetRef.current = false;
+        context.fillRect(0, 0, 100, 100);
       }
-    };
-
-    canvasElement.addEventListener('wheel', handleWheel);
-    return () => canvasElement.removeEventListener('wheel', handleWheel);
-  }, [context, mousePos.x, mousePos.y, viewportTopLeft, scale]);
+    }
+  });
 
   return (
     <>
-      <button onClick={() => context && reset(context)}>reset</button>
-      <pre>scale: {scale.toFixed(2)}</pre>
-      <pre>
-        offset:{' '}
-        {JSON.stringify(offset, (_, v) =>
-          v.toFixed ? Number(v.toFixed(3)) : v
-        )}
-      </pre>
-      <pre>
-        mousePos:{' '}
-        {JSON.stringify(mousePos, (_, v) =>
-          v.toFixed ? Number(v.toFixed(3)) : v
-        )}
-      </pre>
-      <pre>
-        viewportTopLeft:{' '}
-        {JSON.stringify(viewportTopLeft, (_, v) =>
-          v.toFixed ? Number(v.toFixed(3)) : v
-        )}
-      </pre>
-      <canvas
-        ref={canvasRef}
-        onMouseDown={startPan}
-        onTouchStart={handleTouch}
-        className={styles.root}
-        width={props.canvasWidth * ratio}
-        height={props.canvasHeight * ratio}
-        style={{
-          width: `${props.canvasWidth}px`,
-          height: `${props.canvasHeight}px`
-        }}
-      />
+      <canvas ref={canvasRef} className={styles.root} />
     </>
   );
 };
