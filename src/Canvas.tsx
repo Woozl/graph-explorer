@@ -23,6 +23,9 @@ const diffPoints = (a: Point, b: Point): Point => ({
   y: a.y - b.y
 });
 
+const distanceBetweenPoints = (a: Point, b: Point): number =>
+  Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+
 const addPoints = (a: Point, b: Point): Point => ({
   x: a.x + b.x,
   y: a.y + b.y
