@@ -28,6 +28,11 @@ const addPoints = (a: Point, b: Point): Point => ({
   y: a.y + b.y
 });
 
+const averagePoints = (...points: Point[]): Point => ({
+  x: points.reduce((acc, v) => acc + v.x, 0) / points.length,
+  y: points.reduce((acc, v) => acc + v.y, 0) / points.length
+});
+
 const scalePoint = (a: Point, scalar: number): Point => ({
   x: a.x / scalar,
   y: a.y / scalar
