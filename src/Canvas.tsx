@@ -1,12 +1,10 @@
 import React, {
-  MouseEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState
 } from 'react';
-import { validateLocaleAndSetLanguage } from 'typescript';
 import styles from './Canvas.module.css';
 
 type Point = { x: number; y: number };
@@ -132,12 +130,48 @@ const Canvas = (props: CanvasProps) => {
   }, [mouseMove]);
 
   const startPan = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement, globalThis.MouseEvent>) => {
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
       document.addEventListener('mousemove', mouseMove);
       document.addEventListener('mouseup', mouseUp);
       lastMousePosRef.current = { x: e.pageX, y: e.pageY };
     },
     [mouseMove, mouseUp]
+  );
+
+  const touchMove = useCallback(
+    (e: globalThis.TouchEvent) => {
+      if (context !== null) {
+        const lastMousePos = lastMousePosRef.current;
+        const currentMousePos: Point = {
+          x: e.touches[0].pageX,
+          y: e.touches[0].pageY
+        };
+        lastMousePosRef.current = currentMousePos;
+
+        const touchDiff = diffPoints(currentMousePos, lastMousePos);
+        setOffset((prevOffset) => addPoints(prevOffset, touchDiff));
+      }
+    },
+    [context]
+  );
+
+  const touchEnd = useCallback(() => {
+    document.removeEventListener('touchmove', touchMove);
+    document.removeEventListener('touchend', touchEnd);
+  }, [touchMove]);
+
+  const handleTouch = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      document.addEventListener('touchmove', touchMove);
+      document.addEventListener('touchend', touchEnd);
+      if (e.touches.length === 1) {
+        lastMousePosRef.current = {
+          x: e.touches[0].pageX,
+          y: e.touches[0].pageY
+        };
+      }
+    },
+    [touchMove, touchEnd]
   );
 
   useLayoutEffect(() => {
@@ -241,6 +275,7 @@ const Canvas = (props: CanvasProps) => {
       <canvas
         ref={canvasRef}
         onMouseDown={startPan}
+        onTouchStart={handleTouch}
         className={styles.root}
         width={props.canvasWidth * ratio}
         height={props.canvasHeight * ratio}
