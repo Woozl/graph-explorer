@@ -1,60 +1,65 @@
-import React, {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  WheelEvent
-} from 'react';
+import * as React from 'react';
 import styles from './Canvas.module.css';
 
-const TOUCHPAD_ZOOM_SENS = 200;
-const TOUCHPAD_PAN_SENS = 1;
-const ORIGIN: Point = { x: 0, y: 0 };
+interface Point {
+  x: number;
+  y: number;
+}
 
-type Point = { x: number; y: number };
 interface Camera {
   x: number;
   y: number;
   z: number;
 }
 
+function screenToCanvas(point: Point, camera: Camera): Point {
+  return {
+    x: point.x / camera.z - camera.x,
+    y: point.y / camera.z - camera.y
+  };
+}
+
+function canvasToScreen(point: Point, camera: Camera): Point {
+  return {
+    x: (point.x - camera.x) * camera.z,
+    y: (point.y - camera.y) * camera.z
+  };
+}
+
 interface Box {
-  topLeft: Point;
-  bottomRight: Point;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
   width: number;
   height: number;
 }
 
-const screenToCanvas = (point: Point, camera: Camera): Point => ({
-  x: point.x / camera.z - camera.x,
-  y: point.y / camera.z - camera.y
-});
-
-const canvasToScreen = (point: Point, camera: Camera): Point => ({
-  x: (point.x + camera.x) * camera.z,
-  y: (point.y + camera.y) * camera.z
-});
-
-const getViewport = (camera: Camera, box: Box): Box => {
-  const topLeftCanvas = screenToCanvas(box.topLeft, camera);
-  const bottomRightCanvas = screenToCanvas(box.bottomRight, camera);
+function getViewport(camera: Camera, box: Box): Box {
+  const topLeft = screenToCanvas({ x: box.minX, y: box.minY }, camera);
+  const bottomRight = screenToCanvas({ x: box.maxX, y: box.maxY }, camera);
 
   return {
-    topLeft: topLeftCanvas,
-    bottomRight: bottomRightCanvas,
-    width: bottomRightCanvas.x - topLeftCanvas.x,
-    height: bottomRightCanvas.y - topLeftCanvas.y
+    minX: topLeft.x,
+    minY: topLeft.y,
+    maxX: bottomRight.x,
+    maxY: bottomRight.y,
+    height: bottomRight.x - topLeft.x,
+    width: bottomRight.y - topLeft.y
   };
-};
+}
 
-const panCamera = (camera: Camera, dx: number, dy: number): Camera => ({
-  x: camera.x - dx / camera.z,
-  y: camera.y - dy / camera.z,
-  z: camera.z
-});
+function panCamera(camera: Camera, dx: number, dy: number): Camera {
+  return {
+    x: camera.x - dx / camera.z,
+    y: camera.y - dy / camera.z,
+    z: camera.z
+  };
+}
 
-const zoomCamera = (camera: Camera, point: Point, dz: number): Camera => {
+function zoomCamera(camera: Camera, point: Point, dz: number): Camera {
   const zoom = camera.z - dz * camera.z;
+
   const p1 = screenToCanvas(point, camera);
   const p2 = screenToCanvas(point, { ...camera, z: zoom });
 
@@ -63,78 +68,113 @@ const zoomCamera = (camera: Camera, point: Point, dz: number): Camera => {
     y: camera.y + (p2.y - p1.y),
     z: zoom
   };
-};
+}
 
-const Canvas = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [camera, setCamera] = useState<Camera>({ ...ORIGIN, z: 1 });
+function zoomIn(camera: Camera): Camera {
+  const i = Math.round(camera.z * 100) / 25;
+  const nextZoom = (i + 1) * 0.25;
+  const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  return zoomCamera(camera, center, camera.z - nextZoom);
+}
 
-  useLayoutEffect(() => {
-    const handleWheel = (e: globalThis.WheelEvent) => {
-      e.preventDefault();
+function zoomOut(camera: Camera): Camera {
+  const i = Math.round(camera.z * 100) / 25;
+  const nextZoom = (i - 1) * 0.25;
+  const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  return zoomCamera(camera, center, camera.z - nextZoom);
+}
 
-      const { clientX: x, clientY: y, deltaX, deltaY, ctrlKey } = e;
+const Canvas = (props: React.PropsWithChildren) => {
+  const ref = React.useRef<SVGSVGElement>(null);
+
+  const [camera, setCamera] = React.useState({
+    x: 0,
+    y: 0,
+    z: 1
+  });
+
+  React.useEffect(() => {
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault();
+
+      const { clientX, clientY, deltaX, deltaY, ctrlKey } = event;
 
       if (ctrlKey) {
         setCamera((camera) =>
-          zoomCamera(camera, { x, y }, deltaY / TOUCHPAD_ZOOM_SENS)
+          zoomCamera(camera, { x: clientX, y: clientY }, deltaY / 100)
         );
       } else {
-        setCamera((camera) =>
-          panCamera(
-            camera,
-            deltaX * TOUCHPAD_PAN_SENS,
-            deltaY * TOUCHPAD_PAN_SENS
-          )
-        );
+        setCamera((camera) => panCamera(camera, deltaX, deltaY));
       }
-    };
-
-    let canvasEl: HTMLCanvasElement | null = null;
-    if (canvasRef.current) {
-      canvasEl = canvasRef.current;
-
-      canvasEl.addEventListener('wheel', handleWheel, { passive: false });
     }
 
-    return () => canvasEl?.removeEventListener('wheel', handleWheel);
-  }, [canvasRef]);
+    const elm = ref.current;
+    if (!elm) return;
+
+    elm.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      elm.removeEventListener('wheel', handleWheel);
+    };
+  }, [ref]);
+
+  const transform = `scale(${camera.z}) translate(${camera.x}px, ${camera.y}px)`;
 
   const viewport = getViewport(camera, {
-    topLeft: ORIGIN,
-    bottomRight: { x: window.innerWidth, y: window.innerHeight },
+    minX: 0,
+    minY: 0,
+    maxX: window.innerWidth,
+    maxY: window.innerHeight,
     width: window.innerWidth,
     height: window.innerHeight
   });
 
-  useEffect(() => {
-    if (canvasRef.current !== null) {
-      const canvas = canvasRef.current;
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    }
-  }, []);
-
-  useEffect(() => {
-    if (canvasRef.current !== null) {
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-
-      if (context !== null) {
-        context.resetTransform();
-        context.clearRect(0, 0, window.innerWidth, window.innerHeight);
-        context.scale(camera.z, camera.z);
-        context.translate(camera.x, camera.y);
-
-        context.fillRect(0, 0, 100, 100);
-      }
-    }
-  });
-
   return (
-    <>
-      <canvas ref={canvasRef} className={styles.root} />
-    </>
+    <div>
+      <svg className={styles.root} ref={ref}>
+        <defs>
+          <rect id='box' x='100' y='100' height='100' width='100' />
+        </defs>
+        <g style={{ transform }}>
+          {Array.from(Array(100)).map((_, i) => (
+            <use
+              key={i}
+              href='#box'
+              x={(i % 10) * 200}
+              y={Math.floor(i / 10) * 200}
+            />
+          ))}
+
+          <rect
+            x='1000'
+            y='1000'
+            height='200'
+            width='200'
+            fill='red'
+            onClick={() => alert('hello')}
+          />
+
+          {props.children}
+        </g>
+      </svg>
+      <div>
+        <button
+          style={{ position: 'relative', zIndex: 9999 }}
+          onClick={() => setCamera(zoomIn)}>
+          Zoom In
+        </button>
+        <button
+          style={{ position: 'relative', zIndex: 9999 }}
+          onClick={() => setCamera(zoomOut)}>
+          Zoom Out
+        </button>
+        <div>{Math.floor(camera.z * 100)}%</div>
+        <div>x: {Math.floor(viewport.minX)}</div>
+        <div>y: {Math.floor(viewport.minY)}</div>
+        <div>width: {Math.floor(viewport.width)}</div>
+        <div>height: {Math.floor(viewport.height)}</div>
+      </div>
+    </div>
   );
 };
 
