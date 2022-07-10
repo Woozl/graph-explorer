@@ -1,13 +1,8 @@
 import { useState } from 'react';
 import './App.css';
-import Canvas from './Canvas';
 
 function App() {
-  return (
-    <div className='App'>
-      <Canvas />
-    </div>
-  );
+  return <div className='App'></div>;
 }
 
 export default App;
